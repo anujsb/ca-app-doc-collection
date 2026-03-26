@@ -33,25 +33,42 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json() as Record<string, string>
-    const { clientId, returnType, periodType, periodLabel } = body
+    const body        = await req.json() as Record<string, string>
+    const clientId    = body["clientId"]
+    const returnType  = body["returnType"]
+    const periodType  = body["periodType"]
+    const periodLabel = body["periodLabel"]
 
     if (!clientId || !returnType || !periodType || !periodLabel)
-      return NextResponse.json({ error: "clientId, returnType, periodType, and periodLabel are required" }, { status: 400 })
+      return NextResponse.json(
+        { error: "clientId, returnType, periodType, and periodLabel are required" },
+        { status: 400 }
+      )
 
-    const valid = ["GSTR-1", "GSTR-3B", "GSTR-9", "GSTR-2B"]
-    if (!valid.includes(returnType))
+    const validReturnTypes = ["GSTR-1", "GSTR-3B", "GSTR-9", "GSTR-2B"] as const
+    type ReturnType = typeof validReturnTypes[number]
+    if (!validReturnTypes.includes(returnType as ReturnType))
       return NextResponse.json({ error: "Invalid returnType" }, { status: 400 })
 
+    const validPeriodTypes = ["monthly", "quarterly", "annual"] as const
+    type PeriodType = typeof validPeriodTypes[number]
+    if (!validPeriodTypes.includes(periodType as PeriodType))
+      return NextResponse.json({ error: "Invalid periodType" }, { status: 400 })
+
     const [filing] = await db.insert(filings)
-      .values({ clientId, returnType, periodType, periodLabel })
+      .values({
+        clientId:    clientId,
+        returnType:  returnType  as ReturnType,
+        periodType:  periodType  as PeriodType,
+        periodLabel: periodLabel,
+      })
       .returning()
 
     const templates = getChecklistForReturn(returnType)
     if (templates.length > 0) {
       await db.insert(checklistItems).values(
         templates.map((t) => ({
-          filingId:    filing.id,
+          filingId:    filing!.id,
           label:       t.label,
           description: t.description,
           isRequired:  t.required,
@@ -62,7 +79,7 @@ export async function POST(req: Request) {
 
     const items = await db
       .select().from(checklistItems)
-      .where(eq(checklistItems.filingId, filing.id))
+      .where(eq(checklistItems.filingId, filing!.id))
       .orderBy(checklistItems.sortOrder)
 
     return NextResponse.json({ ...filing, checklistItems: items }, { status: 201 })
