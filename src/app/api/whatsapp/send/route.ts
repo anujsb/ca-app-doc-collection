@@ -9,6 +9,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json() as { filingId?: string }
     const { filingId } = body
+
     if (!filingId)
       return NextResponse.json({ error: "filingId required" }, { status: 400 })
 
@@ -26,7 +27,7 @@ export async function POST(req: Request) {
       .orderBy(checklistItems.sortOrder)
 
     if (items.length === 0)
-      return NextResponse.json({ error: "No checklist items found for this filing" }, { status: 400 })
+      return NextResponse.json({ error: "No checklist items for this filing" }, { status: 400 })
 
     const twilioSid = await sendChecklistMessage(client, filing, items)
 
@@ -37,7 +38,8 @@ export async function POST(req: Request) {
       twilioSid: twilioSid,
     })
 
-    await db.update(filings)
+    await db
+      .update(filings)
       .set({ status: "pending_docs", updatedAt: new Date() })
       .where(eq(filings.id, filingId))
 
